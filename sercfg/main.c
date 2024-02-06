@@ -5,8 +5,8 @@
  * Usage: EW qimsi_sercfg;"<baudrate> [databits [flowctrl [bufsize]]]"
  * This file is part of the QIMSI Test software
  *
- * Copyright (C) 2023 Peter Graf <pgraf@q40.de>
- * Copyright (C) 2024 Jan Bredenbeek (jan@bredenbeek.net)
+ * Copyright (C) 2023 Peter Graf
+ * Copyright (C) 2024 Jan Bredenbeek
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
