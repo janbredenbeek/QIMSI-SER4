@@ -2,7 +2,9 @@ HIGH-SPEED SERIAL DRIVER FOR QIMSI
 ----------------------------------
 QIMSI is a new multifunctional peripheral for the Sinclair QL which plugs into the extension ROM slot. It offers mass storage through micro-SDHC cards, a PS/2 mouse interface, a PS/2 external keyboard interface and sampled sound output. Details can be found at https://qlforum.co.uk/viewtopic.php?t=4534, ordering info at https://qlforum.co.uk/viewtopic.php?t=4535.
 
-It is also equipped with a high-speed serial port which is controlled by the 'mini-Q68' FPGA chip. It offers speeds up to 230400 baud, which can be used to connect the QL to a PC or Q68 via SERnet. This driver is provided to make this port available as a new 'SER4' device.
+It is also equipped with a high-speed serial port which is controlled by the 'mini-Q68' FPGA chip. It offers speeds up to 230400 baud, which can be used to connect the QL to a PC or Q68 via SERnet. This driver is provided to make this port available as a new 'SER4' device to the QL.
+
+Note for QIMSI Gold users: This driver is meant to be used with QIMSI running in 'QL mode'. Installing it will cause the FPGA chip inside QIMSI to run a single task for driving the serial port; thus you cannot run SMSQ/E or another operating system on it simultaneously. If you want to use QIMSI Gold in 'Q68 mode', the serial interface is supported by SMSQ/E and Minerva for Q68 as usual.
 
 Precautions
 -----------
