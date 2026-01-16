@@ -2,7 +2,7 @@
 *
 * This file is part of the QIMSI QL interface support software
 *
-* Copyright (C) 2023 Jan Bredenbeek
+* Copyright (C) 2023-2025 Jan Bredenbeek
 * 
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -22,13 +22,14 @@
 * v0.1 20231021 JB  Initial version
 * v0.2 20231023 JB  Config block added
 * v0.3 20231206 JB  XON/XOFF implemented, A6 now points to dataspace
+* v0.4 20250105 JB  Added support for second (USB) port
 
                 include 'assert_inc'
                 include 'err_inc'
                 include 'q_inc'
                 include 'MultiConfig02'
 
-version         setstr  0.3
+version         setstr  0.4
 
 pc_intr         equ     $18021
 mc_stat         equ     $18063
@@ -39,6 +40,8 @@ led             equ     $1c100
 uart_txdata     equ     $1c200
 uart_rxdata     equ     $1c204
 uart_status     equ     $1c208	        ; ser port status
+
+ser2_offset     equ     $20             ; offset of I/O addresses of second port
 
 link_txdata     equ     $1c260
 link_rxdata     equ     $1c264
@@ -86,11 +89,14 @@ base:
 ; pre-configured values
 
 cfgmagic dc.l   'QIMS'         ; magic number
-cfgrev   dc.w   1               ; revision number
+cfgrev   dc.w   2               ; revision number
 cfgbaud  dc.l   115200          ; baudrate (0-8)
 cfgbits  dc.b   8               ; number of databits
 cfgflow  dc.b   1               ; flow control
-cfgbuf   dc.w    $6000           ; receive buffer size
+cfgbuf   dc.w    $6000          ; receive buffer size
+cfgport  dc.b   1               ; port number (1 or 2)
+
+         ds.w   0
 
 ; CONFIG block should go here
 
@@ -108,6 +114,9 @@ cfgbuf   dc.w    $6000           ; receive buffer size
           
           mkcfitem 'QIS4',code,'D',cfgbits,,,\
           {Number of data bits},7,7,7,8,8,8
+          
+          mkcfitem 'QIS5',code,'P',cfgport,,,\
+          {Port number},1,1,{1 (UART)},2,2,{2 (USB)}
 
         mkcfblend
         
@@ -156,7 +165,13 @@ start:
         moveq   #datasize/4,d0
 clr_dat 
         clr.l   (a0)+           ; clear dataspace (and a bit more)
-        dbra    d0,clr_dat      
+        dbra    d0,clr_dat
+        moveq   #0,d0
+        move.b  cfgport,d0      ; port number (1 or 2)
+        subq.w  #1,d0           ; make it 0 or 1
+        mulu    #ser2_offset,d0
+        lea     uart_status,a0
+        add.w   d0,a0           ; get base address of port
         move.b  #4,mc_stat      ; set MODE 4
         st      led             ; turn led on
         move.l  #400000,d1      ; 40 MHz / 100
@@ -167,9 +182,9 @@ clr_dat
         addq.w  #1,d1           ; d2 = (40e6/baud/8 + 1)
         lsr.w   #1,d1
         subq.w  #1,d1           ; d2 = (40e6/baud/8 + 1) / 2 - 1
-        move.w  d1,uart_prescale ; set prescaler
-	move.w	#50,bl_rate(a6)
-        lea     buffer,a2
+        move.w  d1,uart_prescale-uart_status(a0) ; set prescaler
+	move.w	#50,bl_rate(a6) ; blink rate for overrun indicator
+        lea     buffer,a2       ; buffer address for queue routines
         move.w  cfgbuf(pc),d1   ; buffer size
         bsr     io_qset         ; set up input queue
         move.w  d1,d0
@@ -178,8 +193,7 @@ clr_dat
         sub.w   d0,d1
         move.w  d1,xon_thrs(a6) ; xon threshold > 75% of queue free
         move.b  cfgflow(pc),xonxoff(a6) ; configured flow control
-        lea     uart_status,a0
-        lea     link_status,a1
+        lea     link_status,a1  ; FIFO link to QL side
         moveq   #$df-256,d0
         and.b   d0,(a0)         ; why ?
         

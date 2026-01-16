@@ -23,6 +23,8 @@
 * v0.2 20231015 JB  Device names changed to SER4/STX4/SRX4, unrolled sendbyte loop
 * v0.3 20231018 JB  Pending input routine now returns byte waiting in D1
 *                   Open routine now clears input fifo
+* v0.4 20260116 JB  basic i/o operations now handled separately from io.serio
+*                   send byte amended to use a2 rather than a1
 
 txdata0 equ     $fed2
 txdata1 equ     $fed3
@@ -32,6 +34,8 @@ txempty equ     0
 rxempty equ     1
 rxoverr equ     3
 
+        include fs_inc
+        include io_inc
         include mt_inc
         include err_inc
         include vect_inc
@@ -41,7 +45,7 @@ i       setnum  0
 loop    maclab
         moveq   #1,d0
         and.b   d1,d0
-        tst.b   (a1,d0.w)
+        tst.b   (a2,d0.w)
         ror.b   #1,d1
 i       setnum  [i]+1
         ifnum   [i] < 8 goto loop
@@ -64,7 +68,7 @@ dev_link ds.l    1       ; link to next driver
 dev_io  ds.l    1       ; physical I/O routine (jsr io.serio)
 dev_open ds.l   1       ; open routine
         ds.l    1       ; close routine
-        ds.l    1       ; JSR instruction to io.serio (short)
+dev_sio ds.l    1       ; JSR instruction to io.serio (short)
         ds.l    1       ; address of pending i/o routine
         ds.l    1       ; address of fetch byte routine
         ds.l    1       ; address of send byte routine
@@ -83,10 +87,11 @@ devinit:
         tst.l   d0
         bne.s   initerr
         lea     dev_def,a3      ; set up pointers
-        lea     dev_open(a0),a2
+        lea     dev_io(a0),a2
+        bsr.s   getaddr         ; i/o routine
         bsr.s   getaddr         ; open routine
         bsr.s   getaddr         ; close routine
-        move.l  a2,dev_io(a0)   ; physical i/o routine
+;        move.l  a2,dev_io(a0)   ; physical i/o routine
         move.w  #$4eb8,(a2)+    ; jsr absolute short
         move.w  io.serio,(a2)+  ; to io_serio
         bsr.s   getaddr         ; pending i/o routine
@@ -105,14 +110,78 @@ getaddr move.w  (a3)+,a1                ; get relative pointer
         move.l  a1,(a2)+                ; and store it
         rts
                     
-dev_def dc.w    open-*          ; open routine
+dev_def dc.w    io-*            ; i/o routine
+        dc.w    open-*          ; open routine
         dc.w    close-*         ; close routine
         dc.w    pend-*          ; pending input
         dc.w    fetch-*         ; fetch character
         dc.w    send-*          ; send char (gives err.bp)
 
-* open routine: check name and create channel if matched.          
-          
+* I/O routine
+* Handle string operations separately for efficiency
+* Everything else is handled by io.serio
+
+io      cmpi.b  #io.sstrg,d0    ; basic I/O?
+        bls.s   io_basic        ; yes, handle directly
+        cmpi.b  #fs.load,d0
+        beq.s   fstrg_2         ; fs.load is io.fstrg with long length
+        cmpi.b  #fs.save,d0
+        beq.s   sstrg_2         ; fs.save is io.sstrg with long length
+io_rest jmp     dev_sio(a3)     ; call io.serio for anything else
+
+io_basic
+        moveq   #7,d7           ; chop off any unwanted bits
+        and.w   d0,d7
+        add.w   d7,d7
+        move.w  io_tab(pc,d7.w),d7 ; get table offset
+        jmp     io_tab(pc,d7.w) ; and do it
+
+io_tab  dc.w    pend-io_tab     ; io.pend
+        dc.w    fetch-io_tab    ; io.fbyte
+        dc.w    io_rest-io_tab  ; io.fline
+        dc.w    fstrg-io_tab    ; io.fstrg
+        dc.w    io_rest-io_tab  ; BP
+        dc.w    send-io_tab     ; io.sbyte
+        dc.w    io_rest-io_tab  ; BP
+        dc.w    sstrg-io_tab    ; io.sstrg
+
+fstrg   andi.l  #$ffff,d2       ; clear msw for io.fstrg
+fstrg_2 move.l  d2,d4           ; total bytes to handle
+        move.l  d1,d5           ; bytes received so far
+        bra.s   fstr_lp
+fstr_nxt
+        bsr     fetch
+        bne.s   fstr_end
+        move.b  d1,(a1)+
+        addq.l  #1,d5
+fstr_lp cmp.l   d4,d5           ; got all bytes?
+        bcs.s   fstr_nxt        ; no, get next
+        moveq   #0,d0
+fstr_end
+        move.l  d5,d1           ; update d1 on exit
+        tst.l   d0              ; set ccr
+        rts
+
+sstrg   andi.l  #$ffff,d2
+sstrg_2 move.l  d2,d4
+        move.l  d1,d5
+        bra.s   sstr_lp
+sstr_nxt
+        move.b  (a1),d1         ; get next byte
+        bsr     send            ; try sending it
+        bne.s   sstr_end        ; on error bail out
+        addq.l  #1,a1           ; successfully sent, so bump pointer
+        addq.l  #1,d5           ; .. and byte count
+sstr_lp cmp.l   d4,d5           ; sent all bytes?
+        bcs.s   sstr_nxt        ; no, send next
+        moveq   #0,d0           ; OK
+sstr_end
+        move.l  d5,d1           ; update d1 on exit
+        tst.l   d0
+        rts
+
+* open routine: check name and create channel if matched.
+
 open:
         move.w  (a0),d0
         subq.w  #4,d0
@@ -172,10 +241,10 @@ fetchrts:
 send    btst    #txempty,status ; is there room in the fifo
         beq.s   send_nc         ; no, return NC
 ;        moveq   #8-1,d2         ; count 8 bits
-        lea     txdata0,a1      ; NB: txdata1 is 1 higher
+        lea     txdata0,a2      ; NB: txdata1 is 1 higher
 ;send_lp moveq   #1,d0
 ;        and.b   d1,d0           ; keep only bit 0 of d1
-;        tst.b   (a1,d0.w)       ; read txdata0 or txdata1 as per bit 0
+;        tst.b   (a2,d0.w)       ; read txdata0 or txdata1 as per bit 0
 ;        ror.b   #1,d1           ; rotate data byte
 ;        dbra    d2,send_lp      ; loop for 8 bits
         sendbyte                ; unroll loop
