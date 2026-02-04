@@ -1,13 +1,17 @@
 HIGH-SPEED SERIAL DRIVER FOR QIMSI
 ----------------------------------
-QIMSI is a new multifunctional peripheral for the Sinclair QL which plugs into the extension ROM slot. It offers mass storage through micro-SDHC cards, a PS/2 mouse interface, a PS/2 external keyboard interface and sampled sound output. Details can be found at https://qlforum.co.uk/viewtopic.php?t=4534, ordering info at https://qlforum.co.uk/viewtopic.php?t=4535.
+QIMSI is a new multifunctional peripheral for the Sinclair QL which plugs into the extension ROM slot. It offers mass storage through micro-SDHC cards, a PS/2 mouse interface, a PS/2 external keyboard interface and sampled sound output. Details can be found at https://theqlforum.com/viewtopic.php?t=4534, ordering info at https://theqlforum.com/viewtopic.php?t=4535.
 
 It is also equipped with a high-speed serial port which is controlled by the 'mini-Q68' FPGA chip. It offers speeds up to 230400 baud, which can be used to connect the QL to a PC or Q68 via SERnet. This driver is provided to make this port available as a new 'SER4' device to the QL.
 
-Note for QIMSI Gold users: This driver is meant to be used with QIMSI running in 'QL mode'. Installing it will cause the FPGA chip inside QIMSI to run a single task for driving the serial port; thus you cannot run SMSQ/E or another operating system on it simultaneously. If you want to use QIMSI Gold in 'Q68 mode', the serial interface is supported by SMSQ/E and Minerva for Q68 as usual.
+Note for QIMSI Gold users: This driver is meant to be used with QIMSI running in 'QL mode'. Installing it will cause the FPGA CPU inside QIMSI to run a single task for driving the serial port; thus you cannot run SMSQ/E or another operating system on it simultaneously. If you want to use QIMSI Gold in 'Q68 mode', using the accelerated CPU and enhanced video, the serial interface is supported by SMSQ/E and Minerva for Q68 as usual.
 
-Precautions
------------
+From version 0.4 (January 2026) onwards, this driver also supports the USB serial port offered by the USB variant of QIMSI (for more information, see https://theqlforum.com/viewtopic.php?t=5594). This allows you to connect QIMSI directly to a PC's USB port, without having to use the RS-232 interface which many modern PC's don't support anymore.
+
+Please read the configuration section below on how to configure the driver for either RS-232 or USB. When using the USB serial port, the information below regarding the RS-232 interface may be disregarded as this driver only supports either the RS-232 or the USB interface, but not both at the same time.
+
+Precautions for using the RS-232 serial port
+--------------------------------------------
 First of all: read the QIMSI manual, in particular the section describing the serial interface.
 
 The serial interface is on the right-hand side of the QIMSI board as seen on the component side with the QL connector under (see page 4 of the QIMSI manual). It is recommended to solder three header pins onto the connector pads, on which you can solder the serial cable to (of course, assumed you have sufficient soldering skills or leave it to someone who have them!). The pin layout is as follows:
@@ -34,21 +38,24 @@ The QL part of the driver can simply be loaded using LRESPR <device>ser4_bin. Yo
 
 In addition to SER4, this driver supports the SRX4/STX4 ports for receive-only and transmit-only channels, as required by the SERnet device. Whilst you cannot open a SRX4 channel to a port that has already been opened to SER4 and vice versa, you can open an STX channel to an already open SER4/SRX4 port. The original SMSQ/E specification allowed an unlimited number of STX channels to be opened to the same port, but this feature is currently not implemented (it was probably meant to send lots of individual files to a printer in quick succession, using transmit buffers of insane size, which I can hardly imagine a use case for nowadays).
 
-Since QIMSI's serial port is controlled by the mini-Q68 chip, which runs independently of the QL, this driver has two parts. The code which runs on the mini-Q68 side (Q68_ROM.SYS) is a small 68000 machine code program that is loaded by the mini-Q68 on startup. It should be placed onto the micro-SD card, along with your QLWAx.WIN containers. Note that the same rules apply for the Q68_ROM.SYS file as for the .WIN containers: the file must be in contiguous sectors and within the first 16 entries in the FAT32 root directory. If you have deleted some files from this FAT32 partition first and then add new files, there is a big chance that the newly added files will **not** be in contiguous sectors (especially when using Windows) and loading Q68_ROM.SYS may fail. You can check if the Q68_ROM.SYS has loaded successfully by looking at QIMSI's LED; it should light up green within seconds after the QL has been turned on (while the QL is still booting).
+Since QIMSI's serial port is controlled by the mini-Q68 CPU, which runs independently of the QL, this driver has two parts. The code which runs on the mini-Q68 side (Q68_ROM.SYS) is a small 68000 machine code program that is loaded by the mini-Q68 on startup. It should be placed onto the micro-SD card, along with your QLWAx.WIN containers. Note that the same rules apply for the Q68_ROM.SYS file as for the .WIN containers: the file must be in contiguous sectors and within the first 16 entries in the FAT32 root directory. If you have deleted some files from this FAT32 partition first and then add new files, there is a big chance that the newly added files will **not** be in contiguous sectors (especially when using Windows) and loading Q68_ROM.SYS may fail. You can check if the Q68_ROM.SYS has loaded successfully by looking at QIMSI's LED; it should light up green within seconds after the QL has been turned on (while the QL is still booting).
 
+Configuration
+-------------
 The usual QL commands which control baudrate, buffer sizes and so on, have no effect on QIMSI's SER4 interface. There are two ways to configure them:
 
-- Use the well-known **menuconfig** program (see https://dilwyn.qlforum.co.uk/config/index.html) to configure the Q68_ROM.SYS file. As this cannot be done from the QL itself, you will need a PC with access to the FAT32 partition and an emulator such as QPC2.
+- Use the well-known **menuconfig** program (see https://sinclairql.net/djw/config/index.html) to configure the Q68_ROM.SYS file. As this cannot be done from the QL itself, you will need a PC with access to the FAT32 partition and an emulator such as QPC2.
 - Use the qimsi_sercfg program to configure the parameters from the QL itself. The syntax is EW qimsi_sercfg;"\<baudrate\> [databits [flowctrl [bufsize]]]". After this, you have to power-cycle the QL to activate the new settings.
 
 The following properties can be configured:
 
-- Baud rate. This speaks for itself. You can set all common rates from 1200 to 230400 baud. The only restriction is that it has to be a multiple of 100.
+- Baud rate. This speaks for itself. You can set all common rates from 1200 to 230400 baud. The only restriction is that it has to be a multiple of 100. This setting only affects the RS-232 port, not the USB serial port.
 - Number of databits (7 or 8, usually 8).
 - Receiver buffer size. You can specify sizes from 0 to 24K bytes. Since QIMSI cannot use hardware flow control, it is recommended to set this size as large as possible to avoid loss of data due to receiver overrun (people who have fought with the QL's dreaded SER1/SER2 ports will remember what I mean!). As the QL is quite slow with processing incoming data (even to RAM disk), it's better to avoid sending blocks of data larger than the receive buffer. If a receiver overrun happens, QIMSI will signal this by flashing its green LED on and off continually. It will keep working normally however, but the flashing will continue until you switch your QL off (there is currently no other way to reset the mini-Q68).\
 Note that QIMSI has internal hardware FIFOs of 1K byte between the QL and mini-Q68 side in both the transmit and receive path. The receive buffer mentioned here is software-based and may be used for software flow control using XON/XOFF (see below).
 - Flow control: May be either off (0, no flow control), or XON/XOFF(1). The XON/XOFF option attempts to control the incoming data flow by sending a XOFF character when the receive buffer is almost full, and sending a XON when the buffer has been emptied sufficiently. It also honours XON/XOFFs sent by the remote side when transmitting.\
 This feature may not always work and is not transparent; if the data itself contains XON/XOFF characters (11h/13h) it will fail. 
+- Port number: For the USB variant of QIMSI, you can choose between the traditional RS-232 serial port 1 (UART) or the USB serial port 2. Only one port at a time is supported by this driver.
 
 Bugs
 ----
@@ -56,6 +63,13 @@ Lots of :-). Much of the code is still in development. However since there appea
 
 Contributors
 ------------
-The QIMSI interface itself is designed by Peter Graf, who also contributed the initial Q68_ROM.SYS code in C and the qimsi_sercfg program.
+The QIMSI device itself is designed by Peter Graf, who also contributed the initial Q68_ROM.SYS code in C and the qimsi_sercfg program.
 
 The SER4 driver is written by Jan Bredenbeek, who also rewrote and extended the Q68_ROM.SYS code in assembly.
+
+Version history
+---------------
+- February 2024
+  - Initial release
+- February 2026
+  - v0.4; added support for second USB serial port (QIMSI USB variant)

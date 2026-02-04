@@ -22,7 +22,7 @@
 * v0.1 20231021 JB  Initial version
 * v0.2 20231023 JB  Config block added
 * v0.3 20231206 JB  XON/XOFF implemented, A6 now points to dataspace
-* v0.4 20250105 JB  Added support for second (USB) port
+* v0.4 20260105 JB  Added support for second (USB) port
 
                 include 'assert_inc'
                 include 'err_inc'
